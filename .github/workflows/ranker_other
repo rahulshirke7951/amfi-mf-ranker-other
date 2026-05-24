@@ -1,4 +1,4 @@
-name: Weekly MF Ranker
+name: Weekly MF Other Ranker
 
 on:
   schedule:
