@@ -14,7 +14,7 @@ QUALITY_FILTERS = {
     "cagr_3y_min": 0.12,
 }
 
-# SWAPPED: Engine 1 is now Momentum (Short-Term)
+# Engine 1: Momentum (Short-Term)
 ENGINE1_WEIGHTS = {
     "return_6m":  0.30,
     "return_3m":  0.20,
@@ -22,14 +22,13 @@ ENGINE1_WEIGHTS = {
     "return_1m":  0.25,
 }
 
-# SWAPPED: Engine 2 is now Quality (Long-Term)
+# Engine 2: Quality (Long-Term)
 ENGINE2_WEIGHTS = {
     "return_1y":  0.25,
     "return_2y":  0.30,
     "return_3y":  0.45,
 }
 
-# SWAPPED: Blend targets Engine 1 as Momentum and Engine 2 as Quality
 COMPOSITE_BLEND = {
     "engine1_momentum": 0.55,
     "engine2_quality":  0.45,
@@ -66,7 +65,6 @@ C = {
     "border":        "D0D8E4",
     "col_hdr_bg":    "1A3A5C",
     "col_hdr_fg":    "FFFFFF",
-    # Group Banners Swapped Order
     "momentum_bg":   "E8560A",   # Orange
     "momentum_fg":   "FFFFFF",
     "longterm_bg":   "1E6B8C",   # Teal
@@ -80,19 +78,12 @@ C = {
     "white":         "FFFFFF",
     "positive":      "1E7A4B",
     "negative":      "C0392B",
-    # Tint blocks updated for new ordering
     "engine1_tint":  "FFF3E0",   # Amber tint for Momentum
     "engine2_tint":  "E3F2FD",   # Blue tint for Quality
     "comp_tint":     "F0FFF4",   # Light green for Composite
     "asmp_title":    "0D1117",
-    "asmp_e1":       "7B3F00",
-    "asmp_e2":       "1E3A5F",
     "asmp_blend":    "2D5016",
-    "asmp_signal":   "4A235A",
-    "asmp_row_e1":   "FEF9E7",
-    "asmp_row_e2":   "EBF5FB",
     "asmp_row_bl":   "EAFAF1",
-    "asmp_row_sg":   "F5EEF8",
 }
 
 # ── DATA LOADING ─────────────────────────────────────────────────────────────
@@ -110,7 +101,7 @@ def load_data():
     combined = pd.concat(frames, ignore_index=True)
     return apply_filters(combined)
 
-# ── SCORING Engine ───────────────────────────────────────────────────────────
+# ── SCORING ENGINE ───────────────────────────────────────────────────────────
 def to_num(series):
     s = series.astype(str).str.replace('%', '').str.replace(',', '').str.strip()
     return pd.to_numeric(s, errors='coerce')
@@ -140,6 +131,10 @@ def score_funds(df):
     essential_returns = ["_r1m", "_r3m", "_r6m", "_r1y", "_r2y_cagr", "_r3y"]
     df["_has_missing_data"] = df[essential_returns].isna().any(axis=1)
 
+    # Asset tag filtering (Gold & Silver vs Standard Equity/Debt)
+    is_metal = df[COLUMN_MAP["scheme_name"]].astype(str).str.lower().str.contains("gold|silver", regex=True)
+    df["_asset_class"] = df.map(lambda x: "Gold & Silver" if is_metal[x.name] else "Standard Equity/Debt", axis=1)
+
     # Quality rules setup
     mask_2y = df["_r2y_cagr"] > (QUALITY_FILTERS["cagr_2y_min"] * 100)
     mask_3y = df["_r3y"]      > (QUALITY_FILTERS["cagr_3y_min"] * 100)
@@ -156,7 +151,7 @@ def score_funds(df):
         cm = df["_cat"] == cat
         cq = cm & df["_qualifies"]
 
-        # NEW ENGINE 1: Momentum (Calculated for all complete funds inside category)
+        # Engine 1: Momentum
         valid_m_mask = cm & (~df["_has_missing_data"])
         if valid_m_mask.sum() > 0:
             e1 = (pct_rank(df.loc[valid_m_mask, "_r6m"]) * ENGINE1_WEIGHTS["return_6m"] +
@@ -168,7 +163,7 @@ def score_funds(df):
             e1 = e1 + (is_uptrend * TREND_BONUS)
             df.loc[valid_m_mask, "_e1"] = e1.clip(0, 100)
 
-        # NEW ENGINE 2: Quality (Only computed for qualified structural funds)
+        # Engine 2: Quality
         if cq.sum() > 0:
             e2 = (pct_rank(df.loc[cq, "_r1y"])      * ENGINE2_WEIGHTS["return_1y"] +
                   pct_rank(df.loc[cq, "_r2y_cagr"]) * ENGINE2_WEIGHTS["return_2y"] +
@@ -178,7 +173,7 @@ def score_funds(df):
     df["_comp"] = (df["_e1"] * COMPOSITE_BLEND["engine1_momentum"] +
                    df["_e2"] * COMPOSITE_BLEND["engine2_quality"])
 
-    # Force broken or incomplete funds to bottom out rank assignments
+    # Force incomplete/broken data to drop bottom out
     df.loc[df["_has_missing_data"], "_comp"] = -1.0
 
     df["_rank"] = (df.groupby("_cat")["_comp"]
@@ -200,13 +195,17 @@ def fmt_pct(val):
     except: return "—"
 
 def score_col(val):
-    try: v = float(val)
-    except: return "888888"
+    try: 
+        v = float(val)
+        if v < 0: return "888888"
+    except: 
+        return "888888"
     if v >= 75: return "1E7A4B"
     if v >= 50: return "E67E00"
     return "C0392B"
 
 def signal(comp):
+    if comp < 0: return "❌ Missing Data"
     if comp >= 75: return "⭐ Strong Buy"
     if comp >= 55: return "✅ Buy"
     return "⚠️ Watch"
@@ -214,26 +213,26 @@ def signal(comp):
 def clean_name(name):
     return re.sub(r'[\\/*?:\[\]]', '', str(name))[:31]
 
-def hfont(size=10, color="FFFFFF", bold=True):
+def hfont(size=9, color="FFFFFF", bold=True):
     return Font(name="Arial", bold=bold, size=size, color=color)
 
 def dfont(size=9, bold=False, color="000000"):
     return Font(name="Arial", bold=bold, size=size, color=color)
 
-# Swapped locations
-MOMENTUM_COLS  = (4, 6)   # 1M to 6M
-LONGTERM_COLS  = (7, 9)   # 1Y to 3Y CAGR
-ENGINE_COLS    = (10, 12) # E1 to Composite
+# Swapped locations adjusted for Asset Class insertion (Asset Class is Column 4)
+MOMENTUM_COLS  = (5, 7)   # 1M to 6M
+LONGTERM_COLS  = (8, 10)  # 1Y to 3Y CAGR
+ENGINE_COLS    = (11, 13) # E1 to Composite
 
 COL_HEADERS = [
-    "Rank", "Scheme Name", "AMC",
+    "Rank", "Scheme Name", "AMC", "Asset Class",
     "1M\nReturn", "3M\nReturn", "6M\nReturn",
     "1Y\nReturn", "2Y\nCAGR", "3Y\nCAGR",
     "Engine 1\n(Momentum)", "Engine 2\n(Quality)", "Composite\nScore",
 ]
 
-COL_WIDTHS = [6, 50, 20, 9, 9, 9, 9, 9, 9, 14, 14, 12]
-RETURN_COLS_IDX = {4, 5, 6, 7, 8, 9}
+COL_WIDTHS = [6, 50, 20, 22, 9, 9, 9, 9, 9, 9, 14, 14, 12]
+RETURN_COLS_IDX = {5, 6, 7, 8, 9, 10}
 
 # ── BUILD A CATEGORY SHEET ───────────────────────────────────────────────────
 def build_category_sheet(wb, cat, cat_df):
@@ -241,8 +240,9 @@ def build_category_sheet(wb, cat, cat_df):
     bd = border()
     total = len(cat_df)
     qualified = int(cat_df["_qualifies"].sum())
+    ncols = len(COL_HEADERS)
 
-    ws.merge_cells(f"A1:{get_column_letter(len(COL_HEADERS))}1")
+    ws.merge_cells(f"A1:{get_column_letter(ncols)}1")
     c = ws["A1"]
     c.value     = f"✦  {cat.upper()}  ✦"
     c.font      = Font(name="Arial", bold=True, size=14, color=C["title_fg"])
@@ -250,7 +250,7 @@ def build_category_sheet(wb, cat, cat_df):
     c.alignment = Alignment(horizontal="center", vertical="center")
     ws.row_dimensions[1].height = 32
 
-    ws.merge_cells(f"A2:{get_column_letter(len(COL_HEADERS))}2")
+    ws.merge_cells(f"A2:{get_column_letter(ncols)}2")
     c = ws["A2"]
     e1_pct = int(COMPOSITE_BLEND["engine1_momentum"] * 100)
     e2_pct = int(COMPOSITE_BLEND["engine2_quality"] * 100)
@@ -260,12 +260,10 @@ def build_category_sheet(wb, cat, cat_df):
     c.alignment = Alignment(horizontal="left", vertical="center", indent=1)
     ws.row_dimensions[2].height = 16
 
-    # Structural setup for headers
-    for ci in range(1, 4):
+    for ci in range(1, 5):
         ws.cell(row=3, column=ci).fill = fill(C["col_hdr_bg"])
         ws.cell(row=3, column=ci).border = bd
 
-    # Group Banners
     for g_start, g_end, label, bg, fg in [
         (MOMENTUM_COLS[0], MOMENTUM_COLS[1], "◄  Momentum  ►", C["momentum_bg"], C["momentum_fg"]),
         (LONGTERM_COLS[0], LONGTERM_COLS[1], "◄  Long-Term  ►", C["longterm_bg"], C["longterm_fg"]),
@@ -273,7 +271,7 @@ def build_category_sheet(wb, cat, cat_df):
     ]:
         ws.merge_cells(f"{get_column_letter(g_start)}3:{get_column_letter(g_end)}3")
         cell = ws.cell(row=3, column=g_start, value=label)
-        cell.font = hfont(size=9, color=fg); cell.fill = fill(bg); cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.font = hfont(color=fg); cell.fill = fill(bg); cell.alignment = Alignment(horizontal="center", vertical="center")
         for ci in range(g_start, g_end + 1):
             ws.cell(row=3, column=ci).fill = fill(bg)
             ws.cell(row=3, column=ci).border = bd
@@ -281,51 +279,65 @@ def build_category_sheet(wb, cat, cat_df):
 
     for ci, hdr in enumerate(COL_HEADERS, 1):
         c = ws.cell(row=4, column=ci, value=hdr)
-        c.font, c.fill, c.alignment, c.border = hfont(size=9), fill(C["col_hdr_bg"]), Alignment(horizontal="center", vertical="center", wrap_text=True), bd
+        c.font, c.fill, c.alignment, c.border = hfont(), fill(C["col_hdr_bg"]), Alignment(horizontal="center", vertical="center", wrap_text=True), bd
     ws.row_dimensions[4].height = 28
 
     for i, (_, row) in enumerate(cat_df.iterrows(), 5):
         rank = row["_rank"]
-        rbg = C["rank1_bg"] if rank == 1 else (C["rank2_bg"] if rank == 2 else (C["rank3_bg"] if rank == 3 else (C["alt_row"] if i % 2 == 0 else C["white"])))
+        is_missing = row["_has_missing_data"]
+        
+        if is_missing:
+            rbg = C["white"]
+        else:
+            rbg = C["rank1_bg"] if rank == 1 else (C["rank2_bg"] if rank == 2 else (C["rank3_bg"] if rank == 3 else (C["alt_row"] if i % 2 == 0 else C["white"])))
         
         vals = [
-            rank, row.get(COLUMN_MAP["scheme_name"], "—"), row.get(COLUMN_MAP["amc"], "—"),
+            "—" if is_missing else rank, 
+            row.get(COLUMN_MAP["scheme_name"], "—"), 
+            row.get(COLUMN_MAP["amc"], "—"),
+            row["_asset_class"],
             fmt_pct(row["_r1m"]), fmt_pct(row["_r3m"]), fmt_pct(row["_r6m"]),
             fmt_pct(row["_r1y"]), fmt_pct(row["_r2y_cagr"]), fmt_pct(row["_r3y"]),
-            round(row["_e1"], 1), round(row["_e2"], 1), round(row["_comp"], 1)
+            "—" if is_missing else round(row["_e1"], 1), 
+            "—" if is_missing else round(row["_e2"], 1), 
+            "—" if is_missing else round(row["_comp"], 1)
         ]
 
         for ci, val in enumerate(vals, 1):
             c = ws.cell(row=i, column=ci, value=val)
-            c.border, c.fill, c.alignment = bd, fill(rbg), (Alignment(horizontal="left", vertical="center") if ci == 2 else Alignment(horizontal="center", vertical="center"))
+            c.border, c.fill, c.alignment = bd, fill(rbg), (Alignment(horizontal="left", vertical="center") if ci in {2, 3, 4} else Alignment(horizontal="center", vertical="center"))
             
             if ci in RETURN_COLS_IDX and isinstance(val, str) and val != "—":
                 num = float(val.replace('%', ''))
-                c.font = Font(name="Arial", bold=(rank <= 3), size=9, color=C["positive"] if num >= 0 else C["negative"])
-            elif ci == 10:
+                c.font = Font(name="Arial", bold=(rank <= 3 and not is_missing), size=9, color=C["positive"] if num >= 0 else C["negative"])
+            elif ci == 11 and not is_missing:
                 c.font = Font(name="Arial", bold=True, size=9, color=score_col(val)); c.fill = fill(C["engine1_tint"])
-            elif ci == 11:
+            elif ci == 12 and not is_missing:
                 c.font = Font(name="Arial", bold=True, size=9, color=score_col(val)); c.fill = fill(C["engine2_tint"])
-            elif ci == 12:
+            elif ci == 13 and not is_missing:
                 c.font = Font(name="Arial", bold=True, size=9, color=score_col(val)); c.fill = fill(C["comp_tint"])
             else:
-                c.font = dfont(bold=(rank <= 3))
+                c.font = dfont(bold=(rank <= 3 and not is_missing))
+                if is_missing:
+                    c.font = Font(name="Arial", italic=True, size=9, color="888888")
         ws.row_dimensions[i].height = 16
 
     for ci, w in enumerate(COL_WIDTHS, 1):
         ws.column_dimensions[get_column_letter(ci)].width = w
+    
+    # Auto-enable Filter Mode on Category Sheets
+    ws.auto_filter.ref = f"A4:{get_column_letter(ncols)}{4 + len(cat_df)}"
     ws.freeze_panes = "A5"
 
 # ── SUMMARY SHEET ─────────────────────────────────────────────────────────────
-def build_summary(wb, df_scored, categories, title_suffix=""):
-    sheet_name = f"🏆 SUMMARY {title_suffix}".strip()
-    ws = wb.create_sheet(sheet_name)
+def build_summary(wb, df_scored, categories):
+    ws = wb.create_sheet("🏆 SUMMARY", 0)
     bd = border()
-    ncols = len(COL_HEADERS) + 1  # Includes custom signal matrix tracking
+    ncols = len(COL_HEADERS) + 1  
 
     ws.merge_cells(f"A1:{get_column_letter(ncols)}1")
     c = ws["A1"]
-    c.value     = f"MF INTELLIGENCE — DUAL ENGINE RANKED SCREENER {title_suffix}"
+    c.value     = "MF INTELLIGENCE — UNIFIED DUAL ENGINE RANKED SCREENER"
     c.font      = Font(name="Arial", bold=True, size=15, color=C["title_fg"])
     c.fill      = fill(C["title_bg"])
     c.alignment = Alignment(horizontal="center", vertical="center")
@@ -335,13 +347,11 @@ def build_summary(wb, df_scored, categories, title_suffix=""):
     c = ws["A2"]
     e1_pct = int(COMPOSITE_BLEND["engine1_momentum"] * 100)
     e2_pct = int(COMPOSITE_BLEND["engine2_quality"] * 100)
-    c.value     = f"Composite Framework Matrix: {e1_pct}% Engine 1 (Momentum) + {e2_pct}% Engine 2 (Quality Setup)"
-    c.font      = Font(name="Arial", italic=True, size=8.5, color=C["info_fg"])
-    c.fill      = fill(C["info_bg"])
-    c.alignment = Alignment(horizontal="left", vertical="center", indent=1)
+    c.value     = f"Composite Master Framework: {e1_pct}% Engine 1 (Momentum) + {e2_pct}% Engine 2 (Quality Setup) | Filter via 'Asset Class' column"
+    c.font = Font(name="Arial", italic=True, size=8.5, color=C["info_fg"]); c.fill = fill(C["info_bg"]); c.alignment = Alignment(horizontal="left", vertical="center", indent=1)
     ws.row_dimensions[2].height = 16
 
-    for ci in range(1, 4):
+    for ci in range(1, 5):
         ws.cell(row=3, column=ci).fill = fill(C["col_hdr_bg"]); ws.cell(row=3, column=ci).border = bd
 
     for g_start, g_end, label, bg, fg in [
@@ -351,17 +361,17 @@ def build_summary(wb, df_scored, categories, title_suffix=""):
     ]:
         ws.merge_cells(f"{get_column_letter(g_start)}3:{get_column_letter(g_end)}3")
         cell = ws.cell(row=3, column=g_start, value=label)
-        cell.font = hfont(size=9, color=fg); cell.fill = fill(bg); cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.font = hfont(color=fg); cell.fill = fill(bg); cell.alignment = Alignment(horizontal="center", vertical="center")
         for ci in range(g_start, g_end + 1):
             ws.cell(row=3, column=ci).fill = fill(bg); ws.cell(row=3, column=ci).border = bd
     ws.row_dimensions[3].height = 18
 
     for ci, hdr in enumerate(COL_HEADERS, 1):
         c = ws.cell(row=4, column=ci, value=hdr)
-        c.font, c.fill, c.alignment, c.border = hfont(size=9), fill(C["col_hdr_bg"]), Alignment(horizontal="center", vertical="center", wrap_text=True), bd
+        c.font, c.fill, c.alignment, c.border = hfont(), fill(C["col_hdr_bg"]), Alignment(horizontal="center", vertical="center", wrap_text=True), bd
 
     sig_col = len(COL_HEADERS) + 1
-    ws.cell(row=4, column=sig_col, value="Signal").font = hfont(size=9)
+    ws.cell(row=4, column=sig_col, value="Signal").font = hfont()
     ws.cell(row=4, column=sig_col).fill = fill(C["col_hdr_bg"])
     ws.cell(row=4, column=sig_col).alignment = Alignment(horizontal="center", vertical="center")
     ws.cell(row=4, column=sig_col).border = bd
@@ -372,36 +382,45 @@ def build_summary(wb, df_scored, categories, title_suffix=""):
         if cat_df.empty: continue
         top = cat_df.iloc[0]
         rbg = C["alt_row"] if i % 2 == 0 else C["white"]
+        is_missing = top["_has_missing_data"]
 
         vals = [
             cat, top.get(COLUMN_MAP["scheme_name"], "—"), top.get(COLUMN_MAP["amc"], "—"),
+            top["_asset_class"],
             fmt_pct(top["_r1m"]), fmt_pct(top["_r3m"]), fmt_pct(top["_r6m"]),
             fmt_pct(top["_r1y"]), fmt_pct(top["_r2y_cagr"]), fmt_pct(top["_r3y"]),
-            round(top["_e1"], 1), round(top["_e2"], 1), round(top["_comp"], 1)
+            "—" if is_missing else round(top["_e1"], 1), 
+            "—" if is_missing else round(top["_e2"], 1), 
+            "—" if is_missing else round(top["_comp"], 1)
         ]
 
         for ci, val in enumerate(vals, 1):
             c = ws.cell(row=i, column=ci, value=val)
-            c.border, c.fill, c.alignment = bd, fill(rbg), (Alignment(horizontal="left", vertical="center") if ci in {1, 2} else Alignment(horizontal="center", vertical="center"))
+            c.border, c.fill, c.alignment = bd, fill(rbg), (Alignment(horizontal="left", vertical="center") if ci in {1, 2, 3, 4} else Alignment(horizontal="center", vertical="center"))
             
             if ci in RETURN_COLS_IDX and isinstance(val, str) and val != "—":
                 num = float(val.replace('%', ''))
                 c.font = Font(name="Arial", size=9, color=C["positive"] if num >= 0 else C["negative"])
-            elif ci == 10:
+            elif ci == 11 and not is_missing:
                 c.font = Font(name="Arial", bold=True, size=9, color=score_col(val)); c.fill = fill(C["engine1_tint"])
-            elif ci == 11:
+            elif ci == 12 and not is_missing:
                 c.font = Font(name="Arial", bold=True, size=9, color=score_col(val)); c.fill = fill(C["engine2_tint"])
-            elif ci == 12:
+            elif ci == 13 and not is_missing:
                 c.font = Font(name="Arial", bold=True, size=9, color=score_col(val)); c.fill = fill(C["comp_tint"])
             else:
                 c.font = dfont()
 
         c_sig = ws.cell(row=i, column=sig_col, value=signal(top["_comp"]))
         c_sig.font, c_sig.fill, c_sig.border, c_sig.alignment = Font(name="Arial", bold=True, size=9), fill(rbg), bd, Alignment(horizontal="center", vertical="center")
+        if is_missing:
+            c_sig.font = Font(name="Arial", italic=True, size=9, color="888888")
         ws.row_dimensions[i].height = 18
 
     for ci, w in enumerate(COL_WIDTHS, 1):
         ws.column_dimensions[get_column_letter(ci)].width = w
+        
+    # Auto-enable Filter Mode on Master Summary Sheet
+    ws.auto_filter.ref = f"A4:{get_column_letter(ncols)}{4 + len(categories)}"
     ws.freeze_panes = "A5"
 
 # ── ASSUMPTIONS SHEET ─────────────────────────────────────────────────────────
@@ -437,7 +456,7 @@ def build_assumptions(wb, df_scored):
     ws.row_dimensions[1].height = 30
 
     ws.merge_cells("A2:C2")
-    ws["A2"] = f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | Engine Target Framework: Swapped V2"
+    ws["A2"] = f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | Unified Asset Class Filtering Implemented"
     ws["A2"].font, ws["A2"].fill, ws["A2"].alignment = Font(name="Arial", italic=True, size=8.5, color=C["info_fg"]), fill(C["info_bg"]), Alignment(horizontal="left", vertical="center", indent=1)
     ws.row_dimensions[2].height = 14
 
@@ -453,54 +472,32 @@ def build_assumptions(wb, df_scored):
 
 # ── MAIN PIPELINE EXECUTOR ───────────────────────────────────────────────────
 def main():
-    print("Loading internal data matrix...")
+    print("Loading data matrix...")
     df = load_data()
     
-    print("Executing Scoring & Dynamic Engine Swaps...")
+    print("Executing Scoring Engine and assigning Asset Tags...")
     df_scored = score_funds(df)
-
-    # ── METALS & COMMODITIES ISOLATION FILTER ──────────────────────────────
-    # Dynamically filters out schemes with 'gold' or 'silver' anywhere in their name
-    metals_mask = df_scored[COLUMN_MAP["scheme_name"]].astype(str).str.lower().str.contains("gold|silver", regex=True)
-    
-    df_standard = df_scored[~metals_mask].copy()
-    df_metals   = df_scored[metals_mask].copy()
 
     wb = Workbook()
     if "Sheet" in wb.sheetnames:
         wb.remove(wb["Sheet"])
 
-    # Build primary core standard assets matrix summary
-    if not df_standard.empty:
-        print("Assembling Standard Assets Summary matrix...")
-        std_categories = sorted(df_standard["_cat"].unique())
-        build_summary(wb, df_standard, std_categories, title_suffix="")
+    categories = sorted(df_scored["_cat"].unique())
 
-    # Build separated safe-haven metals matrix summary
-    if not df_metals.empty:
-        print("Assembling Gold & Silver Commodities Summary matrix...")
-        metal_categories = sorted(df_metals["_cat"].unique())
-        build_summary(wb, df_metals, metal_categories, title_suffix="METALS")
+    print("Building Unified Summary Sheet with Excel Auto-Filters...")
+    build_summary(wb, df_scored, categories)
 
-    print("Writing structural parameter configurations...")
+    print("Writing structural configurations...")
     build_assumptions(wb, df_scored)
 
-    # Build categorical detail breakdown logs (Standard Portfolio Assets)
-    print("Generating isolated categorical profiles...")
-    if not df_standard.empty:
-        for cat in sorted(df_standard["_cat"].unique()):
-            cat_df = df_standard[df_standard["_cat"] == cat].sort_values("_rank")
-            build_category_sheet(wb, cat, cat_df)
-
-    # Build categorical detail breakdown logs (Metals & Hard Commodities Portfolio)
-    if not df_metals.empty:
-        for cat in sorted(df_metals["_cat"].unique()):
-            cat_df = df_metals[df_metals["_cat"] == cat].sort_values("_rank")
-            # Appending suffix label wrapper to sheet naming to prevent collision errors
-            build_category_sheet(wb, f"{cat} Metals", cat_df)
+    print("Generating categorical breakout sheets...")
+    for cat in categories:
+        cat_df = df_scored[df_scored["_cat"] == cat].sort_values("_rank")
+        if cat_df.empty: continue
+        build_category_sheet(wb, cat, cat_df)
 
     wb.save(OUTPUT_FILE)
-    print(f"\n✅ Pipeline Complete! Screened output saved to → {OUTPUT_FILE}")
+    print(f"\n✅ Done! Open '{OUTPUT_FILE}' and look for the 'Asset Class' filter dropdown.")
 
 if __name__ == "__main__":
     main()
