@@ -131,11 +131,50 @@ def score_funds(df):
     essential_returns = ["_r1m", "_r3m", "_r6m", "_r1y", "_r2y_cagr", "_r3y"]
     df["_has_missing_data"] = df[essential_returns].isna().any(axis=1)
 
-    # FIXED: Asset tag filtering (Gold & Silver vs Standard Equity/Debt)
-    is_metal = df[COLUMN_MAP["scheme_name"]].astype(str).str.lower().str.contains("gold|silver", regex=True)
-    df["_asset_class"] = "Standard Equity/Debt"
-    df.loc[is_metal, "_asset_class"] = "Gold & Silver"
 
+    ASSET_TAG_RULES = [
+    
+        {
+            "tag": "G-SEC",
+            "contains": ["G-Sec"]
+        },
+    
+        {
+            "tag": "GILT",
+            "contains": ["Gilt"]
+        },
+    
+        {
+            "tag": "CRISIL",
+            "startswith": ["CRISIL"]
+        },
+    
+        {
+            "tag": "NIFTY",
+            "startswith": ["NIFTY"]
+        },
+    
+        {
+            "tag": "BSE",
+            "startswith": ["S&P", "BSE"]
+        },
+    
+        {
+            "tag": "SILVER",
+            "contains": [
+                "Domestic Prices of physical Silver",
+                "Silver"
+            ]
+        },
+    
+        {
+            "tag": "GOLD",
+            "contains": [
+                "Gold Index",
+                "Gold"
+            ]
+        }
+    ]    
     # Quality rules setup
     mask_2y = df["_r2y_cagr"] > (QUALITY_FILTERS["cagr_2y_min"] * 100)
     mask_3y = df["_r3y"]      > (QUALITY_FILTERS["cagr_3y_min"] * 100)
