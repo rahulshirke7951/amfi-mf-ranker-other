@@ -1,4 +1,4 @@
-name: Weekly MF Ranker
+name: Other MF Ranker
 
 on:
   schedule:
@@ -36,19 +36,19 @@ jobs:
       - name: Save latest output
         run: |
           mkdir -p output
-          mv mf_ranked_screener.xlsx output/mf_ranked_latest.xlsx
+          mv mf_ranked_screener.xlsx output/mf_ranked_Other.xlsx
 
       - name: Commit latest output
         run: |
           git config --global user.name "github-actions"
           git config --global user.email "actions@github.com"
 
-          git add output/mf_ranked_latest.xlsx
-          git commit -m "📊 Update latest MF ranking" || echo "No changes to commit"
+          git add output/mf_ranked_Other.xlsx
+          git commit -m "📊 Other MF Ranker Week-$(date +%V) - $(TZ='Asia/Kolkata' date '+%d-%b-%Y %I:%M %p IST')" || echo "No changes to commit"
           git push
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: mf-ranked-latest
-          path: output/mf_ranked_latest.xlsx
+          path: output/mf_ranked_Other.xlsx
